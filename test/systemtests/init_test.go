@@ -82,6 +82,10 @@ func TestMain(m *M) {
 		flag.StringVar(&sts.scheduler, "scheduler", "k8", "scheduler used for testing")
 	}
 
+	if os.Getenv("CONTIV_MESOS") != "" {
+		flag.StringVar(&sts.scheduler, "scheduler", "mesos", "scheduler used for testing")
+	}
+
 	flag.Parse()
 
 	logrus.Infof("Running system test with params: %+v", sts)
@@ -152,7 +156,6 @@ func (s *systemtestSuite) SetUpSuite(c *C) {
 		s.copyBinary("netplugin")
 		s.copyBinary("netctl")
 		s.copyBinary("contivk8s")
-
 	} else {
 		s.vagrant = remotessh.Vagrant{}
 		nodesStr := os.Getenv("CONTIV_NODES")
@@ -196,6 +199,18 @@ func (s *systemtestSuite) SetUpSuite(c *C) {
 				}
 
 				c.Assert(s.vagrant.Setup(false, []string{"VAGRANT_CWD=" + topDir + "/src/github.com/contiv/netplugin/vagrant/k8s/"}, contivNodes), IsNil)
+			} else if s.scheduler == "mesos" {
+				topDir := os.Getenv("GOPATH")
+				//topDir may contain the godeps path. hence purging the gopath
+				dirs := strings.Split(topDir, ":")
+				if len(dirs) > 1 {
+					topDir = dirs[1]
+				} else {
+					topDir = dirs[0]
+				}
+
+				c.Assert(s.vagrant.Setup(false, []string{"VAGRANT_CWD=" + topDir + "/src/github.com/contiv/netplugin/vagrant/mesos-cni/"}, contivNodes), IsNil)
+
 			} else {
 				c.Assert(s.vagrant.Setup(false, []string{}, contivNodes), IsNil)
 			}
@@ -204,7 +219,8 @@ func (s *systemtestSuite) SetUpSuite(c *C) {
 		for _, nodeObj := range s.vagrant.GetNodes() {
 			nodeName := nodeObj.GetName()
 			if strings.Contains(nodeName, "netplugin-node") ||
-				strings.Contains(nodeName, "k8") {
+				strings.Contains(nodeName, "k8") ||
+				strings.Contains(nodeName, "mesos") {
 				node := &node{}
 				node.tbnode = nodeObj
 				node.suite = s
@@ -212,6 +228,8 @@ func (s *systemtestSuite) SetUpSuite(c *C) {
 				switch s.scheduler {
 				case "k8":
 					node.exec = s.NewK8sExec(node)
+				case "mesos":
+					node.exec = s.NewMesosExec(node)
 				default:
 					node.exec = s.NewDockerExec(node)
 				}
@@ -270,7 +288,7 @@ func (s *systemtestSuite) SetUpTest(c *C) {
 		}
 
 		time.Sleep(5 * time.Second)
-		if s.scheduler != "k8" {
+		if s.scheduler != "k8"  && s.scheduler != "mesos" {
 			for i := 0; i < 11; i++ {
 
 				_, err := s.cli.TenantGet("default")

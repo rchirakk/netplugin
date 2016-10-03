@@ -121,6 +121,11 @@ k8s-test:
 	CONTIV_K8=1 cd vagrant/k8s/ && ./start_sanity_service.sh
 	CONTIV_K8=1 CONTIV_NODES=3 go test -v -timeout 540m ./test/systemtests -check.v -check.f "00SSH|Basic|Network|Policy|TestTrigger|ACIM|HostBridge|Netprofile"
 	cd vagrant/k8s && vagrant destroy -f
+
+mesos-test:
+	CONTIV_NODES=3 $(MAKE) -C vagrant/mesos-cni mesos-cni-demo
+	CONTIV_MESOS=1 CONTIV_NODES=3 go test -v -timeout 540m ./test/systemtests -check.vv -check.f "00SSH|Basic"
+
 # Mesos demo targets
 mesos-docker-demo:
 	cd vagrant/mesos-docker && vagrant up
