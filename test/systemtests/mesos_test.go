@@ -13,37 +13,12 @@ import (
 	"time"
 )
 
-var sysTestLog = log.New()
+var mLog = log.New()
 var mesos_master *node
 var marathonIP string
 
 type mesosSysTestScheduler struct {
 	mesosSysTestsNode *node
-}
-
-type sysLogFmt struct{}
-
-func (t *sysLogFmt) Format(e *log.Entry) ([]byte, error) {
-	e.Message = strings.Join([]string{"[MESOS-SYSTEST]", e.Message}, " ")
-	nt := log.TextFormatter{}
-	return nt.Format(e)
-}
-
-func (s *systemtestSuite) NewMesosExec(n *node) *mesosSysTestScheduler {
-	mesosScheduler := new(mesosSysTestScheduler)
-	mesosScheduler.mesosSysTestsNode = n
-	sysTestLog.Formatter = new(sysLogFmt)
-	if strings.Contains(n.Name(), "node1") {
-		mesos_master = n
-		if mip, err := mesos_master.getIPAddr("eth1"); err != nil {
-			log.Errorf("failed to get marathon ip address")
-			return nil
-		} else {
-			marathonIP = mip
-		}
-	}
-
-	return mesosScheduler
 }
 
 type marathonLabels struct {
@@ -101,12 +76,62 @@ type marathonResp struct {
 	App  marathonRespApp   `json:"app"`
 	Apps []marathonRespApp `json:"apps"`
 }
+type slave struct {
+        id string       `json:"id"`
+        pid string      `json:"pid"`
+        hostname string  `json:"hostname"`
+}
+
+type slaves struct {
+        slaves []slave `json:"slaves"`
+}
 
 var jobid = 1001
+var mslaves = map[string]slave {}
+var ns = map[string]string {}
+
+
+type sysLogFmt struct{}
+
+func (t *sysLogFmt) Format(e *log.Entry) ([]byte, error) {
+	e.Message = strings.Join([]string{"[MESOS-SYSTEST]", e.Message}, " ")
+	nt := log.TextFormatter{}
+	return nt.Format(e)
+}
+
+func (s *systemtestSuite) NewMesosExec(n *node) *mesosSysTestScheduler {
+	mesosScheduler := new(mesosSysTestScheduler)
+	mesosScheduler.mesosSysTestsNode = n
+	mLog.Formatter = new(sysLogFmt)
+	if strings.Contains(n.Name(), "node1") {
+		mesos_master = n
+		if mip, err := mesos_master.getIPAddr("eth1"); err != nil {
+			mLog.Errorf("failed to get marathon ip address")
+			return nil
+		} else {
+			marathonIP = mip
+		}
+
+                s := slaves{}
+                if b, err := processHttpGet(marathonIP + ":5050/slaves"); err !=nil {
+                        if err := json.Unmarshal(b, &s); err != nil {
+                                mLog.Errorf("failed to unmarshal slave response")
+                                return nil, err
+                        }
+                        // TODO: walk thru slaves
+
+
+                } else {
+                        mLog.Errorf("failed to get mesos slaves")
+                }
+	}
+
+	return mesosScheduler
+}
 
 func assertOnError(err error, msg string) bool {
 	if err != nil {
-		log.Errorf("%s:%s", msg, err)
+		mLog.Errorf("%s:%s", msg, err)
 		return true
 	}
 	return false
@@ -129,30 +154,31 @@ func processHttpPost(url string, jReq []byte) error {
 	case http.StatusCreated:
 		info, err := ioutil.ReadAll(httpResp.Body)
 		if err != nil {
-			log.Errorf("failed to get http data: %s", err)
+			mLog.Errorf("failed to get http data: %s", err)
 			return err
 		}
-		log.Infof("http response: %s", string(info))
+		mLog.Infof("http response: %s", string(info))
+		return err
 
 	default:
-		log.Errorf("received unknown http error %d ", httpResp.StatusCode)
+		mLog.Errorf("received unknown http error %d ", httpResp.StatusCode)
 		info, err := ioutil.ReadAll(httpResp.Body)
 		if err != nil {
-			log.Errorf("failed to get http data: %s", err)
+			mLog.Errorf("failed to get http data: %s", err)
 			return err
 		}
-		log.Errorf("error: %s", string(info))
+		mLog.Errorf("error: %s", string(info))
 		return fmt.Errorf("invalid status code")
 	}
 
-	return nil
+	return fmt.Errorf("unknown")
 }
 
 func processHttpGet(url string) ([]byte, error) {
-	log.Infof("get from url %s", url)
+	mLog.Infof("httpget from url %s", url)
 	httpResp, err := http.Get(url)
 	if err != nil {
-		log.Errorf("failed in http GET: %s", err)
+		mLog.Errorf("failed in http GET: %s", err)
 		return nil, err
 	}
 
@@ -163,37 +189,37 @@ func processHttpGet(url string) ([]byte, error) {
 	case http.StatusOK:
 		info, err := ioutil.ReadAll(httpResp.Body)
 		if err != nil {
-			log.Errorf("failed to get http data: %s", err)
+			mLog.Errorf("failed to get http data: %s", err)
 			return nil, err
 		}
-		log.Infof("http response: %s", string(info))
+		mLog.Infof("http response: %s", string(info))
 		return info, nil
 
 	default:
-		log.Errorf("received unknown http error %d ", httpResp.StatusCode)
+		mLog.Errorf("received unknown http error %d ", httpResp.StatusCode)
 		info, err := ioutil.ReadAll(httpResp.Body)
 		if err != nil {
-			log.Errorf("failed to get http data: %s", err)
+			mLog.Errorf("failed to get http data: %s", err)
 			return nil, err
 		}
-		log.Errorf("error: %s", string(info))
+		mLog.Errorf("error: %s", string(info))
 		return nil, fmt.Errorf("invalid status code")
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("unknown")
 }
 
 func processHttpDel(url string) ([]byte, error) {
-	log.Infof("del from url %s", url)
+	mLog.Infof("del from url %s", url)
 	httpReq, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
-		log.Errorf("failed in creating DEL req: %s", err)
+		mLog.Errorf("failed in creating DEL req: %s", err)
 		return nil, err
 	}
 
 	httpResp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
-		log.Errorf("failed in http DEL: %s", err)
+		mLog.Errorf("failed in http DEL: %s", err)
 		return nil, err
 	}
 
@@ -204,24 +230,24 @@ func processHttpDel(url string) ([]byte, error) {
 	case http.StatusOK:
 		info, err := ioutil.ReadAll(httpResp.Body)
 		if err != nil {
-			log.Errorf("failed to get http data: %s", err)
+			mLog.Errorf("failed to get http data: %s", err)
 			return nil, err
 		}
-		log.Infof("http response: %s", string(info))
+		mLog.Infof("http response: %s", string(info))
 		return info, nil
 
 	default:
-		log.Errorf("received unknown http error %d ", httpResp.StatusCode)
+		mLog.Errorf("received unknown http error %d ", httpResp.StatusCode)
 		info, err := ioutil.ReadAll(httpResp.Body)
 		if err != nil {
-			log.Errorf("failed to get http data: %s", err)
+			mLog.Errorf("failed to get http data: %s", err)
 			return nil, err
 		}
-		log.Errorf("error: %s", string(info))
+		mLog.Errorf("error: %s", string(info))
 		return nil, fmt.Errorf("invalid status code")
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("unknown")
 }
 
 func (ms1 *mesosSysTestScheduler) runContainer(spec containerSpec) (*container, error) {
@@ -261,7 +287,7 @@ func (ms1 *mesosSysTestScheduler) runContainer(spec containerSpec) (*container, 
 	jobid++
 	mesosContainer.Id = strconv.Itoa(jobid)
 
-	log.Infof("creating container %s id %d", spec.name, jobid)
+	mLog.Infof("run container %s id %d in %s", spec.name, jobid, ms1.mesosSysTestsNode.Name())
 
 	jReq, err := json.Marshal(mesosContainer)
 	assertOnError(err, "json marshal")
@@ -284,10 +310,8 @@ func (ms1 *mesosSysTestScheduler) runContainer(spec containerSpec) (*container, 
 			return nil, err
 		}
 
-		log.Infof("http get loop count: %d ", l+1)
-
 		if err := json.Unmarshal(jResp, &mResp); err != nil {
-			log.Errorf("failed to unmarshal responase")
+			mLog.Errorf("failed to unmarshal response")
 			return nil, err
 		}
 
@@ -296,18 +320,18 @@ func (ms1 *mesosSysTestScheduler) runContainer(spec containerSpec) (*container, 
 			continue
 		}
 
-		log.Infof("task state %s", mResp.App.Tasks[0].State)
+		mLog.Infof("task %d state %s loop count %d", jobid, mResp.App.Tasks[0].State, l+1)
 
 		if mResp.App.Tasks[0].State == "TASK_RUNNING" {
 			break
 		} else {
-			log.Errorf("invalid task state %s", mResp.App.Tasks[0].State)
+			mLog.Errorf("invalid task state %s", mResp.App.Tasks[0].State)
 			return nil, fmt.Errorf("invalid task state")
 		}
 	}
 
 	if mResp.App.Tasks[0].State != "TASK_RUNNING" {
-		log.Errorf("exhausted loop, bailing out")
+		mLog.Errorf("exhausted loop, bailing out")
 		return nil, fmt.Errorf("task is not running")
 	}
 
@@ -323,62 +347,70 @@ func (ms1 *mesosSysTestScheduler) runContainer(spec containerSpec) (*container, 
 			mc.eth0.ipv6 = mResp.App.Tasks[0].IpAddr[j].IpAddress
 		}
 	}
-	log.Infof("container info %+v", mc)
-	return nil, nil
+	mLog.Infof("container created %+v", mc)
+        //TODO: get :5050/tasks & get slaves_id for this tasks, lookup in slave map
+        // slaveid:5051/containers  to get ns for that
+	return mc, nil
 }
 
 func unknown() {
-	log.Infof("PPPPPPPPPPPPPPP launching to MARS PPPPPPPPPPPPPP")
+	mLog.Infof("XXXXXXXXXXXXXXXXXXX unknwon XXXXXXXXXXXXXXXXXX ")
 	if pc, _, _, ok := runtime.Caller(1); ok {
 		f := runtime.FuncForPC(pc)
-		log.Infof("==== %s()", f.Name())
+		mLog.Infof("==== %s()", f.Name())
 	}
 }
 
 func (ms1 *mesosSysTestScheduler) stop(c *container) error {
 	unknown()
-	log.Infof("===== %+v", ms1)
+	mLog.Infof("===== %+v", ms1)
 	return nil
 }
 
 func (ms1 *mesosSysTestScheduler) start(c *container) error {
 	unknown()
-	log.Infof("===== %+v", ms1)
+	mLog.Infof("===== %+v", ms1)
 	return nil
 }
 
 func (ms1 *mesosSysTestScheduler) startNetmaster() error {
-	log.Infof("Starting netmaster on %s", ms1.mesosSysTestsNode.Name())
+	mLog.Infof("Starting netmaster on %s", ms1.mesosSysTestsNode.Name())
 	dnsOpt := " --dns-enable=false "
 	if ms1.mesosSysTestsNode.suite.enableDNS {
 		dnsOpt = " --dns-enable=true "
 	}
 	return ms1.mesosSysTestsNode.tbnode.RunCommandBackground(ms1.mesosSysTestsNode.suite.binpath +
-                "/netmaster" + dnsOpt + " --cluster-store " +
-                ms1.mesosSysTestsNode.suite.clusterStore + " &> /tmp/netmaster.log")
+		"/netmaster" + dnsOpt + " --cluster-store " +
+		ms1.mesosSysTestsNode.suite.clusterStore + " &> /tmp/netmaster.log")
 }
 
 func (ms1 *mesosSysTestScheduler) stopNetmaster() error {
-	log.Infof("Stopping netmaster on %s", ms1.mesosSysTestsNode.Name())
+	mLog.Infof("Stopping netmaster on %s", ms1.mesosSysTestsNode.Name())
 	return ms1.mesosSysTestsNode.tbnode.RunCommand("sudo pkill netmaster")
 }
 
 func (ms1 *mesosSysTestScheduler) stopNetplugin() error {
-	log.Infof("Stopping netplugin on %s", ms1.mesosSysTestsNode.Name())
+	mLog.Infof("Stopping netplugin on %s", ms1.mesosSysTestsNode.Name())
 	return ms1.mesosSysTestsNode.tbnode.RunCommand("sudo pkill netplugin")
 }
 
 func (ms1 *mesosSysTestScheduler) startNetplugin(args string) error {
-	log.Infof("Starting netplugin on %s", ms1.mesosSysTestsNode.Name())
+	mLog.Infof("Starting netplugin on %s", ms1.mesosSysTestsNode.Name())
 	return ms1.mesosSysTestsNode.tbnode.RunCommandBackground("sudo " +
-                ms1.mesosSysTestsNode.suite.binpath + "/netplugin -plugin-mode docker -vlan-if " +
-                ms1.mesosSysTestsNode.suite.vlanIf + " --cluster-store " +
-                ms1.mesosSysTestsNode.suite.clusterStore + " " + args + "&> /tmp/netplugin.log")
+		ms1.mesosSysTestsNode.suite.binpath + "/netplugin -plugin-mode docker -vlan-if " +
+		ms1.mesosSysTestsNode.suite.vlanIf + " --cluster-store " +
+		ms1.mesosSysTestsNode.suite.clusterStore + " " + args + "&> /tmp/netplugin.log")
 
 }
 
 func (ms1 *mesosSysTestScheduler) cleanupContainers() error {
 
+        return nil
+	if ms1.mesosSysTestsNode.Name() != mesos_master.Name() {
+		return nil
+	}
+
+	mLog.Infof("cleanup containers from %s", ms1.mesosSysTestsNode.Name())
 	mResp := marathonResp{}
 	jResp, err := processHttpGet("http://" +
 		marathonIP + ":8080/v2/apps/")
@@ -387,17 +419,17 @@ func (ms1 *mesosSysTestScheduler) cleanupContainers() error {
 	}
 
 	if err := json.Unmarshal(jResp, &mResp); err != nil {
-		log.Errorf("failed to unmarshal response")
+		mLog.Errorf("failed to unmarshal response")
 		return err
 	}
 
 	failed := false
 
 	for i := 0; i < len(mResp.Apps); i++ {
-		log.Infof("deleteing container %s", mResp.Apps[i].Id)
+		mLog.Infof("deleteing container %s", mResp.Apps[i].Id)
 		if _, err := processHttpDel("http://" + marathonIP +
 			":8080/v2/apps" + mResp.Apps[i].Id); err != nil {
-			log.Errorf("failed to delete %s", mResp.Apps[i].Id)
+			mLog.Errorf("failed to delete %s", mResp.Apps[i].Id)
 			failed = failed || true
 
 		}
@@ -428,42 +460,47 @@ func (ms1 *mesosSysTestScheduler) startListener(c *container, port int, protocol
 }
 
 func (ms1 *mesosSysTestScheduler) rm(c *container) error {
-	unknown()
-	return nil
+        return nil
+	if _, err := processHttpDel("http://" + marathonIP +
+		":8080/v2/apps/" + c.name); err != nil {
+		mLog.Errorf("failed to delete %s, error %s", c, err)
+                return err
+	}
+        return nil
 }
 
 func (ms1 *mesosSysTestScheduler) getIPAddr(c *container, dev string) (string, error) {
 	unknown()
-	return "", nil
+	return "", fmt.Errorf("not implemented")
 }
 func (ms1 *mesosSysTestScheduler) checkPing(c *container, ipaddr string) error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
 }
 func (ms1 *mesosSysTestScheduler) checkPing6(c *container, ipv6addr string) error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
 }
 func (ms1 *mesosSysTestScheduler) checkPingFailure(c *container, ipaddr string) error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
 }
 func (ms1 *mesosSysTestScheduler) checkPing6Failure(c *container, ipv6addr string) error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
 }
 func (ms1 *mesosSysTestScheduler) cleanupSlave() {
-        log.Infof("Cleaning up slave on %s", ms1.mesosSysTestsNode.Name())
+	mLog.Infof("Cleaning up slave on %s", ms1.mesosSysTestsNode.Name())
 	vNode := ms1.mesosSysTestsNode.tbnode
 	vNode.RunCommand("sudo ovs-vsctl del-br contivVxlanBridge")
 	vNode.RunCommand("sudo ovs-vsctl del-br contivVlanBridge")
 	vNode.RunCommand("for p in `ifconfig  | grep vport | " +
-                "awk '{print $1}'`; do sudo ip link delete $p type veth; done")
+		"awk '{print $1}'`; do sudo ip link delete $p type veth; done")
 	vNode.RunCommand("sudo rm /var/run/docker/plugins/netplugin.sock")
 	vNode.RunCommand("sudo service docker restart")
 }
 func (ms1 *mesosSysTestScheduler) cleanupMaster() {
-	log.Infof("Cleaning up master on %s", ms1.mesosSysTestsNode.Name())
+	mLog.Infof("Cleaning up master on %s", ms1.mesosSysTestsNode.Name())
 	vNode := ms1.mesosSysTestsNode.tbnode
 	vNode.RunCommand("etcdctl rm --recursive /contiv")
 	vNode.RunCommand("etcdctl rm --recursive /contiv.io")
@@ -481,35 +518,34 @@ func (ms1 *mesosSysTestScheduler) runCommandUntilNoNetmasterError() error {
 }
 
 func (ms1 *mesosSysTestScheduler) rotateNetmasterLog() error {
-        fn := "netmaster.log"
-        _, err := ms1.mesosSysTestsNode.runCommand(fmt.Sprintf("mv %s %s`date +%%s`", fn, fn + ".old-"))
+	fn := "/tmp/netmaster.log"
+	_, err := ms1.mesosSysTestsNode.runCommand(fmt.Sprintf("mv %s %s`date +%%s`", fn, fn+".old-"))
 	return err
 }
 
 func (ms1 *mesosSysTestScheduler) rotateNetpluginLog() error {
-        fn := "netplugin.log"
-        _, err := ms1.mesosSysTestsNode.runCommand(fmt.Sprintf("mv %s %s`date +%%s`", fn, fn + ".old-"))
+	fn := "/tmp/netplugin.log"
+	_, err := ms1.mesosSysTestsNode.runCommand(fmt.Sprintf("mv %s %s`date +%%s`", fn, fn+".old-"))
 	return err
 }
 
 func (ms1 *mesosSysTestScheduler) getIPv6Addr(c *container, dev string) (string, error) {
 	unknown()
-	return "", nil
+	return "", fmt.Errorf("not implemented")
 }
 
 func (ms1 *mesosSysTestScheduler) checkForNetpluginErrors() error {
 	out, _ := ms1.mesosSysTestsNode.tbnode.
-                         RunCommandWithOutput(`for i in /tmp/net*; do grep -A 5 "panic\|fatal" $i; done`)
+		RunCommandWithOutput(`for i in /tmp/net*; do grep -A 5 "panic\|fatal" $i; done`)
 	if out != "" {
-		log.Errorf("Fatal error in logs on %s: \n", ms1.mesosSysTestsNode.Name())
-		fmt.Printf("%s\n==========================================\n", out)
-		return fmt.Errorf("fatal error in netplugin logs")
+		mLog.Errorf("Fatal error in logs on %s: %s\n", ms1.mesosSysTestsNode.Name(), out)
+		return fmt.Errorf("fatal panic in netplugin logs")
 	}
 
 	out, _ = ms1.mesosSysTestsNode.tbnode.RunCommandWithOutput(`for i in /tmp/net*; do grep "error" $i; done`)
 	if out != "" {
-		log.Errorf("error output in netplugin logs on %s: \n", ms1.mesosSysTestsNode.Name())
-		fmt.Printf("%s==========================================\n\n", out)
+		mLog.Errorf("error output in netplugin logs on %s: %s\n", ms1.mesosSysTestsNode.Name(), out)
+		return fmt.Errorf("fatal error in netplugin logs")
 
 	}
 
@@ -518,7 +554,7 @@ func (ms1 *mesosSysTestScheduler) checkForNetpluginErrors() error {
 
 func (ms1 *mesosSysTestScheduler) rotateLog(prefix string) error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
 }
 
 func (ms1 *mesosSysTestScheduler) checkConnectionRetry(c *container, ipaddr, protocol string, port, delay, retries int) error {
@@ -528,56 +564,75 @@ func (ms1 *mesosSysTestScheduler) checkConnectionRetry(c *container, ipaddr, pro
 
 func (ms1 *mesosSysTestScheduler) checkNoConnectionRetry(c *container, ipaddr, protocol string, port, delay, retries int) error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
 }
 
 func (ms1 *mesosSysTestScheduler) checkPingWithCount(c *container, ipaddr string, count int) error {
 	unknown()
+        cmd := fmt.Sprintf("ping -c %d %s", count, ipaddr)
+	out, err := ms1.exec(c, cmd)
+
+	if err != nil || strings.Contains(out, "0 received, 100% packet loss") {
+		mLog.Errorf("Ping from %s to %s FAILED: %q - %v", c, ipaddr, out, err)
+		return fmt.Errorf("Ping failed from %s to %s: %q - %v", c, ipaddr, out, err)
+	}
+	mLog.Infof("Ping from %s to %s SUCCEEDED", c, ipaddr)
 	return nil
 }
+
 func (ms1 *mesosSysTestScheduler) checkPing6WithCount(c *container, ipaddr string, count int) error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
 }
 func (ms1 *mesosSysTestScheduler) checkSchedulerNetworkCreated(nwName string, expectedOp bool) error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
 }
 func (ms1 *mesosSysTestScheduler) waitForListeners() error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
 }
 
 func (ms1 *mesosSysTestScheduler) verifyVTEPs(expVTEPS map[string]bool) (string, error) {
 	unknown()
-	return "", nil
+	return "", fmt.Errorf("not implemented")
 }
 func (ms1 *mesosSysTestScheduler) verifyEPs(epList []string) (string, error) {
 	unknown()
-	return "", nil
+	return "", fmt.Errorf("not implemented")
 }
 
 func (ms1 *mesosSysTestScheduler) reloadNode(n *node) error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
 }
 
 func (ms1 *mesosSysTestScheduler) getMasterIP() (string, error) {
 	unknown()
-	return "", nil
+	return "", fmt.Errorf("not implemented")
 }
 
 func (ms1 *mesosSysTestScheduler) startIperfServer(containers *container) error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
 }
 
 func (ms1 *mesosSysTestScheduler) startIperfClient(containers *container, ip, limit string, isErr bool) error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
 }
 
 func (ms1 *mesosSysTestScheduler) tcFilterShow(bw string) error {
 	unknown()
-	return nil
+	return fmt.Errorf("not implemented")
+}
+
+func (ms1 *mesosSysTestScheduler) exec(c *container, args string) (string, error) {
+	out, err := c.node.runCommand(fmt.Sprintf("sudo ip netns exec %s %s", c.containerID, args))
+	if err != nil {
+		mLog.Errorf(out)
+		return out, err
+	}
+
+	return out, nil
 }
