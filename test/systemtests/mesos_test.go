@@ -77,19 +77,18 @@ type marathonResp struct {
 	Apps []marathonRespApp `json:"apps"`
 }
 type slave struct {
-        id string       `json:"id"`
-        pid string      `json:"pid"`
-        hostname string  `json:"hostname"`
+	Id       string `json:"id"`
+	Pid      string `json:"pid"`
+	Hostname string `json:"hostname"`
 }
 
 type slaves struct {
-        slaves []slave `json:"slaves"`
+	Slaves []slave `json:"slaves"`
 }
 
 var jobid = 1001
-var mslaves = map[string]slave {}
-var ns = map[string]string {}
-
+var mslaves = map[string]slave{}
+var ns = map[string]string{}
 
 type sysLogFmt struct{}
 
@@ -112,20 +111,22 @@ func (s *systemtestSuite) NewMesosExec(n *node) *mesosSysTestScheduler {
 			marathonIP = mip
 		}
 
-                s := slaves{}
-                if b, err := processHttpGet(marathonIP + ":5050/slaves"); err !=nil {
-                        if err := json.Unmarshal(b, &s); err != nil {
-                                mLog.Errorf("failed to unmarshal slave response")
-                                return nil, err
-                        }
-                        // TODO: walk thru slaves
+		s := slaves{}
+		b, err := processHttpGet("http://" + marathonIP + ":5050/slaves")
+		if err != nil {
+			mLog.Errorf("failed to get slave list, %s", err)
+			return nil
+		}
 
+		if err := json.Unmarshal(b, &s); err != nil {
+			mLog.Errorf("failed to unmarshal slave list, %s", err)
+			return nil
+		}
 
-                } else {
-                        mLog.Errorf("failed to get mesos slaves")
+                for _, k :=range s.Slaves {
+                        mslaves[k.Id] = k
                 }
 	}
-
 	return mesosScheduler
 }
 
@@ -332,7 +333,7 @@ func (ms1 *mesosSysTestScheduler) runContainer(spec containerSpec) (*container, 
 
 	if mResp.App.Tasks[0].State != "TASK_RUNNING" {
 		mLog.Errorf("exhausted loop, bailing out")
-		return nil, fmt.Errorf("task is not running")
+		return nil, fmt.Errorf("task failed to start")
 	}
 
 	mc := &container{}
@@ -347,9 +348,18 @@ func (ms1 *mesosSysTestScheduler) runContainer(spec containerSpec) (*container, 
 			mc.eth0.ipv6 = mResp.App.Tasks[0].IpAddr[j].IpAddress
 		}
 	}
-	mLog.Infof("container created %+v", mc)
-        //TODO: get :5050/tasks & get slaves_id for this tasks, lookup in slave map
-        // slaveid:5051/containers  to get ns for that
+	mLog.Infof("container created %+v, xxx slave %sxxx", mc, mResp.App.Tasks[0]["id"])
+	//TODO: get :5050/tasks & get slaves_id for this tasks, lookup in slave map
+	// slaveid:5051/containers  to get ns for that
+
+	jResp, err := processHttpGet("http://" + marathonIP + ":5050/tasks")
+	if err != nil {
+		mLog.Errorf("failed to get tasks from mesos, %s", err)
+		return nil, err
+	}
+
+	mLog.Errorf("==== tasks \n%+v \n", jResp)
+
 	return mc, nil
 }
 
@@ -405,7 +415,7 @@ func (ms1 *mesosSysTestScheduler) startNetplugin(args string) error {
 
 func (ms1 *mesosSysTestScheduler) cleanupContainers() error {
 
-        return nil
+	return nil
 	if ms1.mesosSysTestsNode.Name() != mesos_master.Name() {
 		return nil
 	}
@@ -460,13 +470,13 @@ func (ms1 *mesosSysTestScheduler) startListener(c *container, port int, protocol
 }
 
 func (ms1 *mesosSysTestScheduler) rm(c *container) error {
-        return nil
+	return nil
 	if _, err := processHttpDel("http://" + marathonIP +
 		":8080/v2/apps/" + c.name); err != nil {
 		mLog.Errorf("failed to delete %s, error %s", c, err)
-                return err
+		return err
 	}
-        return nil
+	return nil
 }
 
 func (ms1 *mesosSysTestScheduler) getIPAddr(c *container, dev string) (string, error) {
@@ -569,7 +579,7 @@ func (ms1 *mesosSysTestScheduler) checkNoConnectionRetry(c *container, ipaddr, p
 
 func (ms1 *mesosSysTestScheduler) checkPingWithCount(c *container, ipaddr string, count int) error {
 	unknown()
-        cmd := fmt.Sprintf("ping -c %d %s", count, ipaddr)
+	cmd := fmt.Sprintf("ping -c %d %s", count, ipaddr)
 	out, err := ms1.exec(c, cmd)
 
 	if err != nil || strings.Contains(out, "0 received, 100% packet loss") {
