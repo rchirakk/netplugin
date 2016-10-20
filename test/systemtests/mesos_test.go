@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -62,9 +63,10 @@ type taskIpAddr struct {
 }
 
 type taskResp struct {
-	Id     string       `json:"id"`
-	State  string       `json:"state"`
-	IpAddr []taskIpAddr `json:"ipAddresses"`
+	Id      string       `json:"id"`
+	SlaveId string       `json:"slaveId"`
+	State   string       `json:"state"`
+	IpAddr  []taskIpAddr `json:"ipAddresses"`
 }
 
 type marathonRespApp struct {
@@ -87,7 +89,11 @@ type slaves struct {
 }
 
 var jobid = 1001
-var mslaves = map[string]slave{}
+var mslaves = struct {
+	sync.RWMutex
+	s map[string]slave
+}{s: make(map[string]slave)}
+
 var ns = map[string]string{}
 
 type sysLogFmt struct{}
@@ -123,9 +129,11 @@ func (s *systemtestSuite) NewMesosExec(n *node) *mesosSysTestScheduler {
 			return nil
 		}
 
-                for _, k :=range s.Slaves {
-                        mslaves[k.Id] = k
-                }
+		for _, k := range s.Slaves {
+			mslaves.Lock()
+			mslaves.s[k.Id] = k
+			mslaves.Unlock()
+		}
 	}
 	return mesosScheduler
 }
@@ -316,7 +324,7 @@ func (ms1 *mesosSysTestScheduler) runContainer(spec containerSpec) (*container, 
 			return nil, err
 		}
 
-		if len(mResp.App.Tasks) <= 0 || mResp.App.Tasks[0].State == "TASK_STAGING" {
+		if len(mResp.App.Tasks) <= 0 || mResp.App.Tasks[0].State != "TASK_RUNNING" {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
@@ -331,7 +339,7 @@ func (ms1 *mesosSysTestScheduler) runContainer(spec containerSpec) (*container, 
 		}
 	}
 
-	if mResp.App.Tasks[0].State != "TASK_RUNNING" {
+	if len(mResp.App.Tasks) <= 0 || mResp.App.Tasks[0].State != "TASK_RUNNING" {
 		mLog.Errorf("exhausted loop, bailing out")
 		return nil, fmt.Errorf("task failed to start")
 	}
@@ -348,8 +356,13 @@ func (ms1 *mesosSysTestScheduler) runContainer(spec containerSpec) (*container, 
 			mc.eth0.ipv6 = mResp.App.Tasks[0].IpAddr[j].IpAddress
 		}
 	}
-	mLog.Infof("container created %+v, xxx slave %sxxx", mc, mResp.App.Tasks[0]["id"])
-	//TODO: get :5050/tasks & get slaves_id for this tasks, lookup in slave map
+	mLog.Infof("container created %+v, id %s slave %s ", mc, mResp.App.Tasks[0].Id,
+		mResp.App.Tasks[0].SlaveId)
+	mslaves.RLock()
+	s := mslaves.s[mResp.App.Tasks[0].SlaveId]
+	mslaves.RUnlock()
+	mLog.Infof("DDDDDDDDD %s %+v \n", mResp.App.Tasks[0].SlaveId, s)
+
 	// slaveid:5051/containers  to get ns for that
 
 	jResp, err := processHttpGet("http://" + marathonIP + ":5050/tasks")
@@ -415,7 +428,6 @@ func (ms1 *mesosSysTestScheduler) startNetplugin(args string) error {
 
 func (ms1 *mesosSysTestScheduler) cleanupContainers() error {
 
-	return nil
 	if ms1.mesosSysTestsNode.Name() != mesos_master.Name() {
 		return nil
 	}
@@ -470,7 +482,6 @@ func (ms1 *mesosSysTestScheduler) startListener(c *container, port int, protocol
 }
 
 func (ms1 *mesosSysTestScheduler) rm(c *container) error {
-	return nil
 	if _, err := processHttpDel("http://" + marathonIP +
 		":8080/v2/apps/" + c.name); err != nil {
 		mLog.Errorf("failed to delete %s, error %s", c, err)
