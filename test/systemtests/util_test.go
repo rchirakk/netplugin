@@ -302,11 +302,12 @@ func (s *systemtestSuite) runContainersOnNode(num int, networkName, tenantName, 
 	return containers, nil
 }
 
-func (s *systemtestSuite) runContainersWithDNS(num int, tenantName, networkName, serviceName string) ([]*container, error) {
+func (s *systemtestSuite) runContainersWithDNS(num int, tenantName, networkName, serviceName string, imageName string) ([]*container, error) {
 	containers := []*container{}
 	mutex := sync.Mutex{}
 
 	errChan := make(chan error)
+
 
 	// Get the dns server for the network
 	dnsServer, err := s.getNetworkDNSServer(tenantName, networkName)
@@ -324,17 +325,22 @@ func (s *systemtestSuite) runContainersWithDNS(num int, tenantName, networkName,
 		docSrvName = fmt.Sprintf("%s.%s", serviceName, docknetName)
 	}
 
+        if len(imageName) <= 0 {
+                imageName = "contiv/alpine"
+        }
+
 	for i := 0; i < num; i++ {
 		go func(i int) {
 			nodeNum := i % len(s.nodes)
 			name := fmt.Sprintf("%s-srv%d-%d", strings.Replace(docSrvName, "/", "-", -1), i, nodeNum)
 			spec := containerSpec{
-				imageName:   "contiv/alpine",
+				imageName:   imageName,
 				networkName: networkName,
 				name:        name,
 				serviceName: serviceName,
 				dnsServer:   dnsServer,
 				tenantName:  tenantName,
+                                commandName:"sh",
 			}
 
 			cont, err := s.nodes[nodeNum].exec.runContainer(spec)
@@ -405,6 +411,20 @@ func (s *systemtestSuite) pingTest(containers []*container) error {
 func (s *systemtestSuite) pingTestByName(containers []*container, hostName string) error {
 
 	errChan := make(chan error, len(containers))
+
+        for i:= 0; i< len(s.nodes); i++ {
+                s, err:= s.nodes[i].runCommand("curl -s localhost:9090/inspect/nameserver | python -m json.tool")
+                logrus.Infof("==> %s %s ",s ,err)
+        }
+        for _, cont := range containers {
+                s, err := cont.node.exec.exec(cont, fmt.Sprintf("arp -n"))
+		logrus.Infof("%+v==> %s: %s ", cont, s, err)
+	}
+
+        for _, cont := range containers {
+                s, err := cont.node.exec.exec(cont, fmt.Sprintf("dig %s",hostName))
+		logrus.Infof("%+v==> %s: %s ", cont, s, err)
+	}
 
 	for _, cont := range containers {
 		go func(cont *container, hostName string) { errChan <- cont.node.exec.checkPing(cont, hostName) }(cont, hostName)

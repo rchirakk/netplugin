@@ -2,8 +2,6 @@ package systemtests
 
 import (
 	"fmt"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -113,33 +111,30 @@ func (s *systemtestSuite) testBasicStartStopContainer(c *C, encap string) {
 	c.Assert(s.cli.NetworkDelete("default", "private"), IsNil)
 }
 
-func (s *systemtestSuite) TestBasicSvcDiscoveryVXLAN(c *C) {
+func (s *systemtestSuite) TestBasicNameServerVXLAN(c *C) {
 	if s.basicInfo.Scheduler == "k8" {
 		return
 	}
-	s.testBasicSvcDiscovery(c, "vxlan")
+	s.testBasicNameServer(c, "vxlan")
 }
 
-func (s *systemtestSuite) TestBasicSvcDiscoveryVLAN(c *C) {
+func (s *systemtestSuite) TestBasicNameServerVLAN(c *C) {
 	if s.basicInfo.Scheduler == "k8" {
 		return
 	}
-	s.testBasicSvcDiscovery(c, "vlan")
+	s.testBasicNameServer(c, "vlan")
 }
 
-func (s *systemtestSuite) testBasicSvcDiscovery(c *C, encap string) {
-	if !strings.Contains(s.basicInfo.ClusterStore, "etcd") {
-		c.Skip("Skipping test")
-	}
-	// HACK: "--dns" option is broken in docker 1.10.3. skip this test
-	if os.Getenv("CONTIV_DOCKER_VERSION") == "1.10.3" {
-		c.Skip("Skipping dns test docker 1.10.3")
-	}
+func (s *systemtestSuite) testBasicNameServer(c *C, encap string) {
+
+        epg_name1 := "contiv-epg1"
+        epg_name2 := "contiv-epg2"
 
 	if s.fwdMode == "routing" && encap == "vlan" {
 		s.SetupBgp(c, false)
 		s.CheckBgpConnection(c)
 	}
+
 	c.Assert(s.cli.NetworkPost(&client.Network{
 		PktTag:      1001,
 		NetworkName: "private",
@@ -151,13 +146,13 @@ func (s *systemtestSuite) testBasicSvcDiscovery(c *C, encap string) {
 
 	for i := 0; i < s.basicInfo.Iterations; i++ {
 		group1 := &client.EndpointGroup{
-			GroupName:   fmt.Sprintf("svc1%d", i),
+			GroupName:   fmt.Sprintf("%s%d", epg_name1, i),
 			NetworkName: "private",
 			Policies:    []string{},
 			TenantName:  "default",
 		}
 		group2 := &client.EndpointGroup{
-			GroupName:   fmt.Sprintf("svc2%d", i),
+			GroupName:   fmt.Sprintf("%s%d", epg_name2, i),
 			NetworkName: "private",
 			Policies:    []string{},
 			TenantName:  "default",
@@ -167,9 +162,12 @@ func (s *systemtestSuite) testBasicSvcDiscovery(c *C, encap string) {
 		logrus.Infof("Creating epg: %s", group2.GroupName)
 		c.Assert(s.cli.EndpointGroupPost(group2), IsNil)
 
-		containers1, err := s.runContainersWithDNS(s.basicInfo.Containers, "default", "private", fmt.Sprintf("svc1%d", i))
+
+		containers1, err := s.runContainersWithDNS(s.basicInfo.Containers, "default", "private",
+                        fmt.Sprintf("%s%d", epg_name1,i), "rchirakk/ubuntu-dns")
 		c.Assert(err, IsNil)
-		containers2, err := s.runContainersWithDNS(s.basicInfo.Containers, "default", "private", fmt.Sprintf("svc2%d", i))
+		containers2, err := s.runContainersWithDNS(s.basicInfo.Containers, "default", "private",
+                        fmt.Sprintf("%s%d", epg_name2, i), "rchirakk/ubuntu-dns")
 		c.Assert(err, IsNil)
 
 		containers := append(containers1, containers2...)
@@ -182,9 +180,17 @@ func (s *systemtestSuite) testBasicSvcDiscovery(c *C, encap string) {
 			time.Sleep(5 * time.Second)
 		}
 
-		// Check name resolution
-		c.Assert(s.pingTestByName(containers, fmt.Sprintf("svc1%d", i)), IsNil)
-		c.Assert(s.pingTestByName(containers, fmt.Sprintf("svc2%d", i)), IsNil)
+                logrus.Infof("cont1: %+v", containers1)
+                logrus.Infof("cont2: %+v", containers2)
+
+		// Check epg name resolution
+
+		c.Assert(s.pingTestByName(containers, fmt.Sprintf("%s%d", epg_name1, i)), IsNil)
+		c.Assert(s.pingTestByName(containers, fmt.Sprintf("%s%d", epg_name2, i)), IsNil)
+
+                // check container name name
+                c.Assert(s.pingTestByName(containers2, containers2[0].name), IsNil)
+                c.Assert(s.pingTestByName(containers1, containers1[0].name), IsNil)
 
 		// cleanup
 		c.Assert(s.removeContainers(containers), IsNil)

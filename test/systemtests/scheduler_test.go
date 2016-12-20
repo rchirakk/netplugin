@@ -5,6 +5,7 @@ package systemtests
    Scalable for other schedulers also, if required.
 */
 type systemTestScheduler interface {
+        exec(c *container, args string)(string, error)
 	runContainer(spec containerSpec) (*container, error)
 	stop(c *container) error
 	start(c *container) error
