@@ -64,7 +64,7 @@ govet-src: $(PKG_DIRS)
 
 misspell-src: $(PKG_DIRS)
 	$(info +++ check spelling $(PKG_DIRS))
-	misspell -locale US -error $?
+	@misspell -locale US -error $?
 
 go-version:
 	$(info +++ check go version)
@@ -134,7 +134,7 @@ k8s-test:
 	cd vagrant/k8s/ && CONTIV_K8=1 vagrant ssh k8master -c 'sudo -i bash -lc "cd /opt/gopath/src/github.com/contiv/netplugin && make run-build"'
 	CONTIV_K8=1 cd vagrant/k8s/ && ./start_sanity_service.sh
 	cd $(GOPATH)/src/github.com/contiv/netplugin/scripts/python && PYTHONIOENCODING=utf-8 ./createcfg.py -scheduler 'k8'
-	CONTIV_K8=1 CONTIV_NODES=3 go test -v -timeout 540m ./test/systemtests -check.v -check.f "00SSH|TestBasic|TestNetwork|TestPolicy|TestTrigger"   
+	CONTIV_K8=1 CONTIV_NODES=3 GORACE=halt_on_error=1 go test -race -v -timeout 540m ./test/systemtests -check.v -check.f "00SSH|TestBasic|TestNetwork|TestPolicy|TestTrigger"   
 	cd vagrant/k8s && vagrant destroy -f 
 # Mesos demo targets
 mesos-docker-demo:
@@ -192,14 +192,14 @@ ubuntu-tests:
 
 system-test:start
 	cd $(GOPATH)/src/github.com/contiv/netplugin/scripts/python && PYTHONIOENCODING=utf-8 ./createcfg.py 
-	go test -v -timeout 480m ./test/systemtests -check.v -check.f "00SSH|Basic|Network|Policy|TestTrigger|ACIM|Netprofile"
+	GORACE=halt_on_error=1 go test -race -v -timeout 480m ./test/systemtests -check.v -check.f "00SSH|Basic|Network|Policy|TestTrigger|ACIM|Netprofile"
 
 l3-test:
 	CONTIV_L3=2 CONTIV_NODES=3 make stop
 	CONTIV_L3=2 CONTIV_NODES=3 make start
 	CONTIV_L3=2 CONTIV_NODES=3 make ssh-build
 	cd $(GOPATH)/src/github.com/contiv/netplugin/scripts/python && PYTHONIOENCODING=utf-8 ./createcfg.py -contiv_l3 2
-	CONTIV_L3=2 CONTIV_NODES=3 go test -v -timeout 900m ./test/systemtests -check.v  
+	CONTIV_L3=2 CONTIV_NODES=3 GORACE=halt_on_error=1 go test -race -v -timeout 900m ./test/systemtests -check.v  
 	CONTIV_L3=2 CONTIV_NODES=3 make stop
 l3-demo:
 	CONTIV_L3=1 CONTIV_NODES=3 vagrant up
@@ -224,10 +224,10 @@ host-unit-test-coverage-detail:
 
 host-integ-test: host-cleanup start-aci-gw
 	@echo dev: running integration tests...
-	sudo -E /usr/local/go/bin/go test -v -timeout 20m ./test/integration/ -check.v -encap vlan -fwd-mode bridge
-	sudo -E /usr/local/go/bin/go test -v -timeout 20m ./test/integration/ -check.v -encap vxlan -fwd-mode bridge
-	sudo -E /usr/local/go/bin/go test -v -timeout 20m ./test/integration/ -check.v -encap vxlan -fwd-mode routing
-	sudo -E /usr/local/go/bin/go test -v -timeout 20m ./test/integration/ -check.v -check.f "AppProfile" -encap vlan -fwd-mode bridge --fabric-mode aci
+	sudo -E GORACE=halt_on_error=0 /usr/local/go/bin/go test -race -v -timeout 20m ./test/integration/ -check.v -encap vlan -fwd-mode bridge
+	sudo -E GORACE=halt_on_error=0 /usr/local/go/bin/go test -race -v -timeout 20m ./test/integration/ -check.v -encap vxlan -fwd-mode bridge
+	sudo -E GORACE=halt_on_error=0 /usr/local/go/bin/go test -race -v -timeout 20m ./test/integration/ -check.v -encap vxlan -fwd-mode routing
+	sudo -E GORACE=halt_on_error=0 /usr/local/go/bin/go test -race -v -timeout 20m ./test/integration/ -check.v -check.f "AppProfile" -encap vlan -fwd-mode bridge --fabric-mode aci
 
 start-aci-gw:
 	@echo dev: starting aci gw...
