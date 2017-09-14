@@ -1469,7 +1469,7 @@ func (ac *APIController) RuleCreate(rule *contivModel.Rule) error {
 
 	// verify parameter values
 	if rule.Direction == "in" {
-		if rule.ToNetwork != "" || rule.ToEndpointGroup != "" || rule.ToIpAddress != "" {
+		if rule.ToNetwork != "" || rule.ToEndpointGroup != "" {
 			return errors.New("Can not specify 'to' parameters in incoming rule")
 		}
 		if rule.FromNetwork != "" && rule.FromIpAddress != "" {
@@ -1492,6 +1492,8 @@ func (ac *APIController) RuleCreate(rule *contivModel.Rule) error {
 	} else {
 		return errors.New("Invalid direction for the rule")
 	}
+
+	// Todo: check to ip address is in the same epg
 
 	// Make sure endpoint groups and networks referred exists.
 	if rule.FromEndpointGroup != "" {

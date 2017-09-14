@@ -133,6 +133,7 @@ func PolicyAddRule(policy *contivModel.Policy, rule *contivModel.Rule) error {
 		}
 
 		// Add the Rule
+		log.Infof("rule; %+v in epg %+v \n", rule, epgKey)
 		err := gp.AddRule(rule)
 		if err != nil {
 			log.Errorf("Error adding the rule %s to epg policy %s. Err: %v", rule.Key, gpKey, err)

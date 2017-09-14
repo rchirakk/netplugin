@@ -227,9 +227,9 @@ func addRule(ctx *cli.Context) {
 		if ctx.String("to-network") != "" {
 			errExit(ctx, exitHelp, "Cant specify to-network for incoming rule", false)
 		}
-		if ctx.String("to-ip-address") != "" {
-			errExit(ctx, exitHelp, "Cant specify to-ip-address for incoming rule", false)
-		}
+		//if ctx.String("to-ip-address") != "" {
+		//	errExit(ctx, exitHelp, "Cant specify to-ip-address for incoming rule", false)
+		//}
 
 		// If from EPG is specified, make sure from network is specified too
 		if ctx.String("from-group") != "" && ctx.String("from-network") != "" {

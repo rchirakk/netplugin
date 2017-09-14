@@ -168,6 +168,7 @@ func (gp *EpgPolicy) createOfnetRule(rule *contivModel.Rule, dir string) (*ofnet
 	var remoteEpgID int
 	var err error
 
+	log.Infof("createpol %+v \n", rule)
 	ruleID := gp.EpgPolicyKey + ":" + rule.Key + ":" + dir
 
 	// Create an ofnet rule
