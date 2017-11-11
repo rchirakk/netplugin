@@ -1,0 +1,1 @@
+sudo ansible-playbook -u vagrant -i inventory/contiv.cfg cluster.yml -b -e kube_network_plugin=contiv -e contiv_auth_proxy_image_tag=1.1.5 -e contiv_image_tag=1.1.5  --private-key=/home/admin/.vagrant.d/insecure_private_key

@@ -94,7 +94,7 @@ if [[ "#{node_os}" == "ubuntu" ]] && [[ "$reinstall" -eq 1 ]]; then
     sudo apt-get purge docker-engine -y || :
     curl https://get.docker.com | sed s/docker-engine/docker-engine=#{docker_version}-0~xenial/g | bash
 elif [[ "$reinstall" -eq 1 ]] && [[ "#{legacy_docker}" -eq 1 ]]; then
-    # cleanup openstack-kilo repo if required
+     # cleanup openstack-kilo repo if required
     yum remove docker-engine -y || :
     yum-config-manager --disable openstack-kilo
     if [[ #{docker_version} == *"rc"* ]]; then
@@ -104,6 +104,7 @@ elif [[ "$reinstall" -eq 1 ]] && [[ "#{legacy_docker}" -eq 1 ]]; then
         echo "Getting released docker version #{docker_version} "
         curl https://get.docker.com | sed s/docker-engine/docker-engine-#{docker_version}/ | bash
     fi
+    echo ""
 elif [[ "$reinstall" -eq 1 ]]; then
     yum remove docker-engine -y || :
     yum remove docker-ce || :
@@ -112,6 +113,7 @@ elif [[ "$reinstall" -eq 1 ]]; then
     yum-config-manager --enable docker-ce-stable
     yum makecache fast
     yum install -y docker-ce-#{docker_version}
+    echo ""
 fi
 
 # setup docker cluster store
@@ -135,7 +137,7 @@ sudo systemctl daemon-reload
 sudo systemctl stop docker
 sudo systemctl start docker
 
-# remove duplicate docker key
+ remove duplicate docker key
 rm /etc/docker/key.json
 (service docker restart) || exit 1
 
@@ -152,45 +154,45 @@ provision_common_always = <<SCRIPT
 echo 3 > /proc/sys/vm/drop_caches
 
 # start docker daemon
-systemctl start docker
+#systemctl start docker
 
 # Start OVS if required
-systemctl start openvswitch
+#systemctl start openvswitch
 
 # Enable ovs mgmt port
-(ovs-vsctl set-manager tcp:127.0.0.1:6640 && \
- ovs-vsctl set-manager ptcp:6640) || exit 1
+#(ovs-vsctl set-manager tcp:127.0.0.1:6640 && \
+# ovs-vsctl set-manager ptcp:6640) || exit 1
 SCRIPT
 
 provision_node = <<SCRIPT
 set -x
 
 ## start etcd with generated config
-echo "#!/bin/bash" > /usr/bin/etcd.sh
-echo "etcd --name %{node_name} --data-dir /var/lib/etcd \
- -heartbeat-interval=100 -election-timeout=5000 \
- --listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001 \
- --advertise-client-urls http://%{node_addr}:2379,http://%{node_addr}:4001 \
- --initial-advertise-peer-urls http://%{node_addr}:2380,http://%{node_addr}:7001 \
- --listen-peer-urls http://%{node_addr}:2380 \
- --initial-cluster %{node_peers} --initial-cluster-state new" >> /usr/bin/etcd.sh
+#echo "#!/bin/bash" > /usr/bin/etcd.sh
+#echo "etcd --name %{node_name} --data-dir /var/lib/etcd \
+# -heartbeat-interval=100 -election-timeout=5000 \
+# --listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001 \
+# --advertise-client-urls http://%{node_addr}:2379,http://%{node_addr}:4001 \
+# --initial-advertise-peer-urls http://%{node_addr}:2380,http://%{node_addr}:7001 \
+# --listen-peer-urls http://%{node_addr}:2380 \
+# --initial-cluster %{node_peers} --initial-cluster-state new" >> /usr/bin/etcd.sh
 
-chmod +x /usr/bin/etcd.sh
-cp %{gopath_folder}/src/github.com/contiv/netplugin/scripts/etcd.service /etc/systemd/system/etcd.service
+#chmod +x /usr/bin/etcd.sh
+#cp %{gopath_folder}/src/github.com/contiv/netplugin/scripts/etcd.service /etc/systemd/system/etcd.service
 
 ## start consul
-echo "#!/bin/bash" > /usr/bin/consul.sh
-echo "consul agent -server %{consul_join_flag} %{consul_bootstrap_flag} \
- -bind=%{node_addr} -data-dir /opt/consul" >> /usr/bin/consul.sh
+#echo "#!/bin/bash" > /usr/bin/consul.sh
+#echo "consul agent -server %{consul_join_flag} %{consul_bootstrap_flag} \
+# -bind=%{node_addr} -data-dir /opt/consul" >> /usr/bin/consul.sh
 
- chmod +x /usr/bin/consul.sh
-cp %{gopath_folder}/src/github.com/contiv/netplugin/scripts/consul.service /etc/systemd/system/consul.service
+# chmod +x /usr/bin/consul.sh
+#cp %{gopath_folder}/src/github.com/contiv/netplugin/scripts/consul.service /etc/systemd/system/consul.service
 
-systemctl daemon-reload || exit 1
-systemctl enable etcd || exit 1
-systemctl enable consul || exit 1
-systemctl start etcd || exit 1
-systemctl start consul || exit 1
+#systemctl daemon-reload || exit 1
+#systemctl enable etcd || exit 1
+#systemctl enable consul || exit 1
+#systemctl start etcd || exit 1
+#systemctl start consul || exit 1
 SCRIPT
 
 provision_bird = <<SCRIPT
